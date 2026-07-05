@@ -97,14 +97,15 @@ overwrite_policy:
 
 1. Resolve the source run.
 2. Verify that the source run contains at least one expected Feature Radar artifact.
-3. Resolve the target project path.
-4. Select destination directories from the mode.
-5. Check for existing destination files.
-6. If conflicts exist and the user did not explicitly request overwrite, stop and report the conflicts.
-7. Create destination directories when safe.
-8. Copy the copy set, preserving file contents.
-9. Create `handoff-manifest.md`.
-10. Report destination paths, copied files, missing optional files, and any conflicts.
+3. For completed research handoff, validate that the source run has the expected artifact set for `idea` or `existing-project` mode and is not still marked `status: draft`.
+4. Resolve the target project path.
+5. Select destination directories from the mode.
+6. Check for existing destination files.
+7. If conflicts exist and the user did not explicitly request overwrite, stop and report the conflicts.
+8. Create destination directories when safe.
+9. Copy the copy set, preserving file contents.
+10. Create `handoff-manifest.md`.
+11. Report destination paths, copied files, missing optional files, and any conflicts.
 
 If the target path is outside the current writable workspace, request the required filesystem approval before writing.
 
@@ -119,7 +120,7 @@ python3 tools/radar_handoff.py \
   --mode radar-native
 ```
 
-Use `--mode both` to create both destinations, and `--dry-run` to preview without writing. Use `--overwrite` only when the user explicitly requested replacement.
+Use `--mode both` to create both destinations, and `--dry-run` to preview without writing. Complete validation is the default, and the helper infers `idea` or `existing-project` from the source run `mode:` header. Use `--run-type` only to override the detected type. Use `--allow-incomplete` only when the user intentionally asks to export draft or incomplete research. Use `--overwrite` only when the user explicitly requested replacement.
 
 ## Acceptance Rules
 

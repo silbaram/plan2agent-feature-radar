@@ -30,17 +30,21 @@ If the user asks to hand off or export an existing run to a project, also read `
 If the user asks to run research:
 
 1. Clarify the product idea only when it is too vague to search.
-2. Define a short research plan with search themes and source types.
-3. Use subagents when available:
+2. Unless the user asks for a plan-only/chat-only answer or forbids file writes, create a native run directory under `.feature-radar/runs/<project-slug>/` before the final answer.
+   - When working from this repository, prefer `python3 tools/radar_run.py init --slug <project-slug> --title <title> --mode idea`.
+   - For existing local project research, use `--mode existing-project` and include `--local-project <path>`.
+3. Define a short research plan with search themes and source types.
+4. Use subagents when available:
    - local project scan, only when a local project path is provided
    - radar handoff packaging, only when exporting a completed run to a target project
    - reference discovery
    - web source collection
    - GitHub signal scan
    - evidence review
-4. Search the web and GitHub through the available environment tools.
-5. Store or summarize only source-backed findings.
-6. Produce Feature Radar native outputs, not P2A outputs, unless the user explicitly asks for P2A export.
+5. Search the web and GitHub through the available environment tools.
+6. Store or summarize only source-backed findings.
+7. Produce Feature Radar native outputs, not P2A outputs, unless the user explicitly asks for P2A export.
+8. Before handoff/export, validate the completed run. When working from this repository, prefer `python3 tools/radar_run.py validate --source-run <project-slug> --mode <idea|existing-project>`.
 
 If the user provides a local project path:
 
@@ -49,6 +53,7 @@ If the user provides a local project path:
 3. Identify implemented, partial, missing, risky, and unknown capabilities from local evidence.
 4. Compare local capabilities with external service, docs, changelog, GitHub, and community signals.
 5. Recommend next enhancement candidates, but do not modify code or create implementation tasks unless explicitly requested.
+6. If the request is a completed research/recommendation pass, write the existing-project outputs to `.feature-radar/runs/<project-slug>/` unless the user explicitly requested chat-only output.
 
 If the user asks to hand off or export a completed run:
 
@@ -62,6 +67,8 @@ If the user asks to hand off or export a completed run:
 ## Output
 
 For a research run, produce these outputs in `.feature-radar/runs/<project-slug>/` when file writing is appropriate. Use a readable English project slug such as `on-device-character-chat-app`, not a timestamp, unless the same project needs multiple snapshots.
+
+File writing is appropriate for a completed research, local-project research, or handoff-prep request unless the user explicitly asks for plan-only/chat-only output or forbids file writes.
 
 ```text
 research-plan.md

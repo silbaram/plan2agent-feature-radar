@@ -2,6 +2,38 @@
 
 Use this workflow for web, GitHub, and optional local project evidence collection. Completed runs can later be handed off to a target project with `handoff.md`.
 
+## Run-First Rule
+
+Completed research should leave a native Feature Radar run behind. When the user asks for research, local-project analysis, next enhancement candidates, or handoff preparation, create or update:
+
+```text
+.feature-radar/runs/<project-slug>/
+```
+
+before the final answer, unless the user explicitly asks for plan-only/chat-only output or forbids file writes.
+
+When working from this repository, initialize the expected artifact set first:
+
+```bash
+python3 tools/radar_run.py init \
+  --slug <project-slug> \
+  --title "<research title>" \
+  --mode existing-project \
+  --local-project /path/to/project
+```
+
+Use `--mode idea` for idea-only research. Validate before handoff:
+
+```bash
+python3 tools/radar_run.py validate \
+  --source-run <project-slug> \
+  --mode existing-project
+```
+
+Run scaffolds start with `status: draft`. Completed artifacts must be updated to `status: complete` before validation and handoff unless the user intentionally asks to hand off draft research.
+
+If a run is not created, state the reason explicitly in the final response.
+
 1. Restate the idea and assumptions.
 2. If a local project path is provided, inspect it read-only and summarize current capabilities.
 3. Identify comparable services and source categories.

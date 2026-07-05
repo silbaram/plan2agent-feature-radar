@@ -148,10 +148,36 @@ For an existing local project, pass the project path and ask for read-only analy
 $feature-radar-research 로컬 프로젝트 /path/to/project 를 read-only로 확인하고, 외부 서비스/문서/GitHub 신호와 비교해서 다음 고도화 기능 후보를 추천해줘. 코드 수정은 하지 마.
 ```
 
+For a local project research run that may later be handed off, create the run scaffold first:
+
+```bash
+python3 tools/radar_run.py init \
+  --slug plan2agent-memory \
+  --title "Plan2Agent Memory self-recovery and document management research" \
+  --mode existing-project \
+  --local-project /Users/qoo10/projects/plan2agent-memory
+```
+
+Then fill the generated files under:
+
+```text
+.feature-radar/runs/plan2agent-memory/
+```
+
+The scaffold starts with `status: draft`. After the research content is complete, change each required artifact header to `status: complete`.
+
+Validate the run before exporting it:
+
+```bash
+python3 tools/radar_run.py validate \
+  --source-run plan2agent-memory \
+  --mode existing-project
+```
+
 To hand off a completed run to a project, provide the run slug, target project path, and export mode:
 
 ```text
-$feature-radar-research on-device-character-chat-app run을 /path/to/my-app 프로젝트로 handoff 해줘. mode는 both로 하고, P2A project id는 my-app으로 써줘.
+$feature-radar-research plan2agent-memory run을 /path/to/my-app 프로젝트로 handoff 해줘. mode는 both로 하고, P2A project id는 my-app으로 써줘.
 ```
 
 Handoff modes:
@@ -171,11 +197,13 @@ Optional helper script:
 
 ```bash
 python3 tools/radar_handoff.py \
-  --source-run on-device-character-chat-app \
+  --source-run plan2agent-memory \
   --target-project /path/to/my-app \
   --mode both \
   --project-id my-app
 ```
+
+`radar_handoff.py` validates complete runs by default and infers the run type from the source run `mode:` header. Use `--run-type` only to override the detected type. Use `--allow-incomplete` only when intentionally exporting draft research.
 
 In Claude Code, invoke the project skill:
 

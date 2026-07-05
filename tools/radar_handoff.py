@@ -27,6 +27,27 @@ COPY_SET = [
     "p2a-context.json",
 ]
 
+CORE_ARTIFACTS = [
+    "research-plan.md",
+    "source-candidates.md",
+    "research-bundle.md",
+    "signal-map.md",
+    "collection-report.md",
+]
+
+EXISTING_PROJECT_ARTIFACTS = [
+    "local-project-scan.md",
+    "capability-gap-analysis.md",
+    "next-iteration-recommendations.md",
+]
+
+RUN_TYPE_ARTIFACTS = {
+    "idea": CORE_ARTIFACTS,
+    "existing-project": CORE_ARTIFACTS + EXISTING_PROJECT_ARTIFACTS,
+}
+
+RUN_TYPE_VALUES = set(RUN_TYPE_ARTIFACTS)
+
 
 def slugify(value: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
@@ -46,6 +67,30 @@ def resolve_source_run(source_run: str) -> Path:
         f"source run not found: {source_run} "
         f"(also checked {by_slug.as_posix()})"
     )
+
+
+def has_draft_status(path: Path) -> bool:
+    text = path.read_text(encoding="utf-8")
+    return any(line.strip().lower() == "status: draft" for line in text.splitlines()[:12])
+
+
+def read_header_value(path: Path, key: str) -> str | None:
+    key_prefix = f"{key.lower()}:"
+    for line in path.read_text(encoding="utf-8").splitlines()[:20]:
+        stripped = line.strip()
+        if stripped.lower().startswith(key_prefix):
+            value = stripped.split(":", 1)[1].strip()
+            return value or None
+    return None
+
+
+def has_complete_status(path: Path) -> bool:
+    text = path.read_text(encoding="utf-8")
+    return any(line.strip().lower() == "status: complete" for line in text.splitlines()[:12])
+
+
+def is_empty_file(path: Path) -> bool:
+    return not path.read_text(encoding="utf-8").strip()
 
 
 def build_destinations(
@@ -74,6 +119,24 @@ def build_destinations(
             )
         )
     return destinations
+
+
+def infer_run_type(source_run: Path, explicit_run_type: str | None) -> tuple[str, str]:
+    if explicit_run_type:
+        return explicit_run_type, "explicit"
+
+    candidates = ["research-plan.md"] + [
+        name for name in COPY_SET if name != "research-plan.md"
+    ]
+    for name in candidates:
+        path = source_run / name
+        if not path.is_file():
+            continue
+        mode = read_header_value(path, "mode")
+        if mode in RUN_TYPE_VALUES:
+            return mode, f"header:{name}"
+
+    return "idea", "fallback"
 
 
 def manifest_text(
@@ -151,7 +214,28 @@ def main(argv: list[str]) -> int:
         action="store_true",
         help="Show what would be copied without writing files.",
     )
+    parser.add_argument(
+        "--run-type",
+        choices=["idea", "existing-project"],
+        help="Expected source run artifact set for complete validation. Defaults to source run mode header, then idea.",
+    )
+    parser.add_argument(
+        "--require-complete",
+        action="store_true",
+        help="Deprecated compatibility flag. Complete validation is now the default.",
+    )
+    parser.add_argument(
+        "--allow-incomplete",
+        action="store_true",
+        help="Allow copying an incomplete or draft source run.",
+    )
     args = parser.parse_args(argv)
+    if args.require_complete and args.allow_incomplete:
+        print(
+            "error: --require-complete and --allow-incomplete cannot be used together",
+            file=sys.stderr,
+        )
+        return 2
 
     try:
         source_run = resolve_source_run(args.source_run)
@@ -168,13 +252,66 @@ def main(argv: list[str]) -> int:
         mode=args.mode,
         project_id=project_id,
     )
+    run_type, run_type_source = infer_run_type(source_run, args.run_type)
 
     existing_sources = [name for name in COPY_SET if (source_run / name).is_file()]
     missing_optional = [name for name in COPY_SET if name not in existing_sources]
+    required_sources = RUN_TYPE_ARTIFACTS[run_type]
+    missing_required = [
+        name for name in required_sources if not (source_run / name).is_file()
+    ]
+    empty_required = [
+        name
+        for name in required_sources
+        if (source_run / name).is_file() and is_empty_file(source_run / name)
+    ]
+    draft_required = [
+        name
+        for name in required_sources
+        if (source_run / name).is_file() and has_draft_status(source_run / name)
+    ]
+    incomplete_required = [
+        name
+        for name in required_sources
+        if (source_run / name).is_file() and not has_complete_status(source_run / name)
+    ]
 
     if not existing_sources:
         print(
             f"error: no expected Feature Radar artifacts found in {source_run}",
+            file=sys.stderr,
+        )
+        return 2
+    require_complete = not args.allow_incomplete
+    if require_complete and (missing_required or empty_required or incomplete_required):
+        print(
+            f"error: source run is incomplete for run type {run_type}",
+            file=sys.stderr,
+        )
+        print(f"run type source: {run_type_source}", file=sys.stderr)
+        if missing_required:
+            print("missing files:", file=sys.stderr)
+            for name in missing_required:
+                print(f"- {name}", file=sys.stderr)
+        if empty_required:
+            print("empty files:", file=sys.stderr)
+            for name in empty_required:
+                print(f"- {name}", file=sys.stderr)
+        if draft_required:
+            print("draft files:", file=sys.stderr)
+            for name in draft_required:
+                print(f"- {name}", file=sys.stderr)
+        missing_complete = [
+            name
+            for name in incomplete_required
+            if name not in draft_required
+        ]
+        if missing_complete:
+            print("missing complete status:", file=sys.stderr)
+            for name in missing_complete:
+                print(f"- {name}", file=sys.stderr)
+        print(
+            "hint: create or complete the run first, set status: complete, then rerun handoff; use --allow-incomplete only for intentional draft export",
             file=sys.stderr,
         )
         return 2
@@ -201,6 +338,7 @@ def main(argv: list[str]) -> int:
 
     for mode, destination in destinations:
         print(f"{mode}: {destination}")
+        print(f"  run type: {run_type} ({run_type_source})")
         for name in existing_sources:
             print(f"  copy {source_run / name} -> {destination / name}")
 

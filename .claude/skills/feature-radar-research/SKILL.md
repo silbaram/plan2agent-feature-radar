@@ -25,16 +25,20 @@ Do not start by writing tools, CLIs, MCP servers, or P2A artifacts.
 ## Procedure
 
 1. Define a small research plan.
-2. Delegate to project subagents when useful:
+2. Unless the user asks for a plan-only/chat-only answer or forbids file writes, create a native run directory under `.feature-radar/runs/<project-slug>/` before the final answer.
+   - When working from this repository, prefer `python3 tools/radar_run.py init --slug <project-slug> --title <title> --mode idea`.
+   - For existing local project research, use `--mode existing-project` and include `--local-project <path>`.
+3. Delegate to project subagents when useful:
    - `local-project-scanner`, only when a local project path is provided
    - `radar-handoff-packager`, only when exporting a completed run to a target project
    - `reference-discovery`
    - `web-source-collector`
    - `github-signal-scanner`
    - `evidence-reviewer`
-3. Keep raw search noise out of the main conversation.
-4. Return only source-backed summaries and URLs.
-5. Store research outputs under `.feature-radar/runs/<project-slug>/` only when the user asks to create files. Use a readable English project slug, not a timestamp, unless the same project needs multiple snapshots.
+4. Keep raw search noise out of the main conversation.
+5. Return only source-backed summaries and URLs.
+6. Store research outputs under `.feature-radar/runs/<project-slug>/` for completed research, local-project research, or handoff-prep requests unless the user explicitly asks for plan-only/chat-only output. Use a readable English project slug, not a timestamp, unless the same project needs multiple snapshots.
+7. Before handoff/export, validate the completed run. When working from this repository, prefer `python3 tools/radar_run.py validate --source-run <project-slug> --mode <idea|existing-project>`.
 
 If the user provides a local project path, inspect it read-only. Skip secrets, credentials, dependency directories, build outputs, generated artifacts, and large binary files unless explicitly requested. Compare the current implementation with external signals and recommend next enhancement candidates. Do not modify code unless explicitly requested.
 

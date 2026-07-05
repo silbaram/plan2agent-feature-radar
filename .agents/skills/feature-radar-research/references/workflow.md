@@ -6,6 +6,38 @@ Collect web, GitHub, and optional local project evidence so Feature Radar can la
 
 The first milestone is evidence collection, not scoring, coding, or P2A integration.
 
+## Run-First Rule
+
+Completed research should leave a native Feature Radar run behind. When the user asks for research, local-project analysis, next enhancement candidates, or handoff preparation, create or update:
+
+```text
+.feature-radar/runs/<project-slug>/
+```
+
+before the final answer, unless the user explicitly asks for plan-only/chat-only output or forbids file writes.
+
+When working from this repository, initialize the expected artifact set first:
+
+```bash
+python3 tools/radar_run.py init \
+  --slug <project-slug> \
+  --title "<research title>" \
+  --mode existing-project \
+  --local-project /path/to/project
+```
+
+Use `--mode idea` for idea-only research. Validate before handoff:
+
+```bash
+python3 tools/radar_run.py validate \
+  --source-run <project-slug> \
+  --mode existing-project
+```
+
+Run scaffolds start with `status: draft`. Completed artifacts must be updated to `status: complete` before validation and handoff unless the user intentionally asks to hand off draft research.
+
+If a run is not created, state the reason explicitly in the final response.
+
 ## Source Types
 
 Prioritize sources in this order:
@@ -247,6 +279,7 @@ A collection run is good enough when:
 A handoff run is good enough when:
 
 - the source run and target project path are recorded
+- the source run was validated for the expected run type before copying
 - destination directories match the selected mode
 - copied files are listed
 - missing optional files are listed
