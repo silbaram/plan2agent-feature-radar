@@ -16,6 +16,7 @@ from pathlib import Path
 
 
 COPY_SET = [
+    "_INDEX.md",
     "research-plan.md",
     "source-candidates.md",
     "research-bundle.md",
