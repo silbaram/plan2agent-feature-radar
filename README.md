@@ -77,6 +77,8 @@ P2A export is optional and intentionally not part of the first research workflow
 
 Feature Radar run outputs are meant to be consumed in layers:
 
+Each run includes a harness-generated `_INDEX.md` at the run root. Start there to distinguish result documents (`collection-report.md`, `next-iteration-recommendations.md`) from evidence documents used to trace the recommendation rationale.
+
 Use a readable English project slug for the output directory:
 
 ```text
