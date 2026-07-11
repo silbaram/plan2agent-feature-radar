@@ -41,6 +41,7 @@ both
 Copy these files when they exist:
 
 ```text
+_INDEX.md
 research-plan.md
 source-candidates.md
 research-bundle.md
@@ -53,6 +54,8 @@ p2a-context.json
 ```
 
 `p2a-context.json` is copied only if it already exists or the user explicitly asks to generate it.
+
+Among the copy-set entries, only `p2a-context.json` is optional. `_INDEX.md` is derived and regenerated in each destination rather than treated as a required source artifact.
 
 Do not copy:
 
@@ -75,12 +78,20 @@ Use this shape:
 source_run:
 project_slug:
 target_project:
-mode:
+run_mode:
+profile:
+handoff_mode:
+mode: # compatibility alias for handoff_mode when emitted by older helpers
+source_complete:
 p2a_project_id:
 created_at:
 overwrite_policy:
 
 ## Copied Files
+
+- ...
+
+## Missing Required Files
 
 - ...
 
@@ -93,19 +104,23 @@ overwrite_policy:
 - ...
 ```
 
+Set `source_complete: true` only when every required artifact is present, non-empty, and `status: complete`; otherwise an explicitly allowed incomplete handoff records `source_complete: false`.
+
 ## Procedure
 
 1. Resolve the source run.
 2. Verify that the source run contains at least one expected Feature Radar artifact.
-3. For completed research handoff, validate that the source run has the expected artifact set for `idea` or `existing-project` mode and is not still marked `status: draft`.
-4. Resolve the target project path.
-5. Select destination directories from the mode.
-6. Check for existing destination files.
-7. If conflicts exist and the user did not explicitly request overwrite, stop and report the conflicts.
-8. Create destination directories when safe.
-9. Copy the copy set, preserving file contents.
-10. Create `handoff-manifest.md`.
-11. Report destination paths, copied files, missing optional files, and any conflicts.
+3. Infer `run_mode` as `idea` or `existing-project` and validate the expected artifact set; authoritative research artifact `mode`, `profile`, and `status` headers must be valid and coherent. All three local-project artifacts are required for `existing-project`, with explicit `N/A` content allowed where appropriate.
+4. Use `general` only for legacy runs with no profile in any research artifact. Reject invalid, duplicate, mixed, or conflicting authoritative metadata. Ignore `_INDEX.md` as metadata authority.
+5. Resolve the target project path.
+6. Select destination directories from `handoff_mode`.
+7. Check for existing destination files.
+8. If conflicts exist and the user did not explicitly request overwrite, stop and report the conflicts. Treat recognized stale destination artifacts as conflicts too.
+9. Before writing, reject the source run itself and non-file managed destination paths. With explicit overwrite, synchronize only recognized managed artifacts: replace transferred files and remove stale managed files that are absent from the source.
+10. Copy the research artifacts, preserving their contents.
+11. Regenerate `_INDEX.md` in each destination from authoritative research artifact metadata.
+12. Create `handoff-manifest.md` with separate source `run_mode`, source `profile`, destination `handoff_mode`, and `source_complete`. A CLI selection of `both` creates two manifests whose `handoff_mode` values are `radar-native` and `p2a-preflight`, respectively.
+13. For intentional incomplete export, set `source_complete: false` and list missing required files separately from missing optional files. The only optional file is `p2a-context.json`. Report destination paths, copied files, missing files, and any conflicts.
 
 If the target path is outside the current writable workspace, request the required filesystem approval before writing.
 
@@ -120,11 +135,13 @@ python3 tools/radar_handoff.py \
   --mode radar-native
 ```
 
-Use `--mode both` to create both destinations, and `--dry-run` to preview without writing. Complete validation is the default, and the helper infers `idea` or `existing-project` from the source run `mode:` header. Use `--run-type` only to override the detected type. Use `--allow-incomplete` only when the user intentionally asks to export draft or incomplete research. Use `--overwrite` only when the user explicitly requested replacement.
+Use `--mode both` to create both destinations, and `--dry-run` to preview without writing. The command-line `--mode` flag is the handoff destination mode. Complete validation is the default, and the helper infers source `run_mode` (`idea` or `existing-project`) from coherent research artifact headers. It preserves the source `profile:`, regenerates `_INDEX.md` in each destination, and treats only a legacy run with no profile in any research artifact as `general`. A manifest `mode:` field, when retained for compatibility, aliases `handoff_mode`; it never means source `run_mode`. `--run-type` is an expected-run-type assertion, not an override of source headers. Use `--allow-incomplete` only when the user intentionally asks to export draft or incomplete research; the manifest must then set `source_complete: false` and separate missing required files from the sole optional file, `p2a-context.json`. Use `--overwrite` only when the user explicitly requested replacement; it synchronizes recognized managed artifacts and removes stale managed files so the destination matches the manifest.
 
 ## Acceptance Rules
 
 - Handoff must be traceable from source run to target project.
+- The manifest must keep `run_mode`, `profile`, and `handoff_mode` semantically separate.
+- The manifest must record `source_complete` and distinguish missing required files from missing optional files.
 - Handoff must not silently overwrite existing research artifacts.
 - Handoff must not rewrite research conclusions.
 - P2A preflight output is created only when the user requests `p2a-preflight` or `both`.

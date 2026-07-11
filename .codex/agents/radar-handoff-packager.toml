@@ -16,7 +16,7 @@ Default destinations:
 - radar-native: <target-project>/.feature-radar/runs/<project-slug>/
 - p2a-preflight: <target-project>/.plan2agent/artifacts/<project-id>/preflight-research/
 
-Copy only Feature Radar artifacts:
+Transfer only the Feature Radar artifacts required by the resolved run_mode:
 - research-plan.md
 - source-candidates.md
 - research-bundle.md
@@ -25,19 +25,32 @@ Copy only Feature Radar artifacts:
 - local-project-scan.md
 - capability-gap-analysis.md
 - next-iteration-recommendations.md
-- p2a-context.json, only if it already exists or the user explicitly asks to generate it
+- p2a-context.json, only when it already exists; this is the sole optional copy file
+
+Regenerate _INDEX.md from authoritative research artifact metadata in every destination. Do not copy a stale source index.
 
 Create a handoff-manifest.md in each destination with:
 - source run
 - target project path
-- mode
+- source run_mode: idea or existing-project
+- source research profile; use general only when no legacy research artifact has a profile header
+- destination handoff_mode: radar-native or p2a-preflight; CLI selection both creates one manifest per destination
+- optional mode compatibility alias for handoff_mode; never use it for run_mode
+- source_complete: true only when every required artifact is present, non-empty, and declares exactly one status: complete
 - P2A project id, when relevant
 - copied files
+- missing required files
 - missing optional files
 - overwrite policy
 - caveats
 
 Rules:
+- Reject invalid, duplicate, mixed, or conflicting mode, profile, and status metadata instead of silently selecting one value.
+- Treat research artifact headers as authority; _INDEX.md is a derived destination artifact and must always be regenerated from them.
+- For run_mode: existing-project, require local-project-scan.md, capability-gap-analysis.md, and next-iteration-recommendations.md; explicit N/A content is valid when an area is not applicable.
+- Treat --run-type as an expected-type assertion, not an override of source metadata.
+- Require complete research by default. Only an explicitly requested incomplete export may set source_complete: false, and it must list missing required files separately from p2a-context.json.
+- Reject self-handoff and non-file managed destination paths before writing. With explicit overwrite, replace or remove only recognized managed artifacts so stale destination files cannot contradict the manifest.
 - Do not overwrite existing files unless the user explicitly requests overwrite or replace.
 - If target files exist, report the conflict and propose a safe next action.
 - Do not copy secrets, dependency directories, build output, generated caches, or raw crawl logs.

@@ -4,7 +4,7 @@
 
 Collect web, GitHub, and optional local project evidence so Feature Radar can later identify feature opportunities, priorities, and next enhancement candidates. Completed runs can later be handed off to a target project with `handoff.md`.
 
-The first milestone is evidence collection, not scoring, coding, or P2A integration.
+The first milestone is evidence collection and qualitative assessment, not deterministic numeric scoring, coding, or P2A integration.
 
 ## Run-First Rule
 
@@ -36,7 +36,32 @@ python3 tools/radar_run.py validate \
 
 Run scaffolds start with `status: draft`. Completed artifacts must be updated to `status: complete` before validation and handoff unless the user intentionally asks to hand off draft research.
 
+Research artifact `mode`, `profile`, and `status` headers are authoritative metadata and must be valid and coherent across the expected artifact set. `_INDEX.md` is derived from them. Do not use `init --overwrite` to change an existing run's mode; use a new slug or an explicit migration workflow.
+
 If a run is not created, state the reason explicitly in the final response.
+
+## Research Profiles
+
+`mode` and `profile` are independent:
+
+```text
+mode: idea | existing-project
+profile: general | tool-gap
+```
+
+`general` is the default and the fallback only for legacy runs with no profile in any research artifact. Invalid, duplicate, mixed, or conflicting authoritative metadata makes the run inconsistent. `_INDEX.md` should be regenerated from the research artifact headers when stale. For `tool-gap`, initialize the same native artifact set with `--profile tool-gap` and follow `tool-gap-profile.md`. A profile does not add a third mode or change which Markdown files are required.
+
+For `profile: tool-gap`, preserve this dependency order:
+
+```text
+discovery and collection
+  -> evidence normalization
+  -> problem clustering
+  -> opportunity synthesis
+  -> alternatives and counter-evidence review
+  -> qualitative assessment
+  -> final evidence review and collection-report.md
+```
 
 ## Source Types
 
@@ -127,6 +152,26 @@ Output:
 source id | repo/issue/PR URL | signal type | repeated request or pain | recency | intensity | confidence
 ```
 
+### Opportunity Synthesis
+
+Run this pass only after its source and normalized signal inputs are ready. First materialize accepted problem clusters, then preserve supporting and counter evidence, check alternatives, and produce bounded opportunities without padding weak recommendations.
+
+For `profile: tool-gap`, follow `tool-gap-profile.md` and return zero to three candidates. Use `insufficient_evidence` when coverage is too weak to decide and `no_supported_opportunity` when sufficient evidence rejects all candidates. For `general`, do not impose the Tool Gap taxonomy or candidate limit.
+
+Output accepted clusters before opportunity rows:
+
+```text
+cluster id | representative problem | evidence refs | repository scope / recurrence | counter-signals | caveat
+```
+
+Then output:
+
+```text
+rank | opportunity | problem cluster refs | evidence refs | alternatives | counter-evidence refs | MVP scope | opportunity assessment | evidence confidence | caveat
+```
+
+Use `strong | moderate | weak | unknown` for opportunity assessment and `high | medium | low | unknown` for evidence confidence. Numeric scores are allowed only when supplied by a named, versioned deterministic scorer.
+
 ### Evidence Review
 
 Check whether conclusions are overclaimed.
@@ -146,8 +191,10 @@ Read `handoff.md` before packaging.
 Output:
 
 ```text
-destination | mode | copied files | missing optional files | conflicts | manifest path
+destination | run_mode | profile | handoff_mode | source_complete | copied files | missing required files | missing optional files | conflicts | manifest path
 ```
+
+For handoff, the only optional copy-set file is `p2a-context.json`; `_INDEX.md` is regenerated in each destination.
 
 ## Native Artifact Shape
 
@@ -156,16 +203,18 @@ Use Markdown first. JSON schemas can come later.
 ```text
 .feature-radar/runs/<project-slug>/
   research-plan.md
-  local-project-scan.md                 # existing project mode only
+  local-project-scan.md                 # required in existing-project mode
   source-candidates.md
   research-bundle.md
   signal-map.md
-  capability-gap-analysis.md            # existing project mode only
-  next-iteration-recommendations.md     # existing project mode only
+  capability-gap-analysis.md            # required in existing-project mode
+  next-iteration-recommendations.md     # required in existing-project mode
   collection-report.md
 ```
 
 Handoff creates `handoff-manifest.md` in each destination, not in the source run by default.
+
+All three existing-project files are required by the current run contract. If a section is not applicable, keep its file and record `N/A` with a reason.
 
 `<project-slug>` should be a readable English project name in lowercase ASCII with hyphens, for example `on-device-character-chat-app`. Do not use a timestamp as the primary directory name unless creating a second snapshot for the same project.
 
@@ -241,7 +290,7 @@ Use this table shape for `next-iteration-recommendations.md`:
 rank | recommendation | action | why now | local evidence | external evidence | expected impact | cost/risk | confidence | next step
 ```
 
-Use this scoring guidance qualitatively unless the user asks for numeric scoring:
+Use this scoring guidance qualitatively. A user request alone does not authorize numeric scoring; numeric values are allowed only when supplied by a named, versioned deterministic scorer:
 
 ```text
 next_iteration_score =
@@ -275,13 +324,16 @@ A collection run is good enough when:
 - weak sources are marked
 - stale sources are marked
 - the report can be read without raw crawl logs
+- every existing-project run contains the three required local-project artifacts, using explicit `N/A` where necessary
 
 A handoff run is good enough when:
 
 - the source run and target project path are recorded
 - the source run was validated for the expected run type before copying
+- authoritative `mode`, `profile`, and `status` metadata is coherent
 - destination directories match the selected mode
 - copied files are listed
-- missing optional files are listed
+- missing required files are separated from missing optional files for intentional incomplete handoff
+- the sole optional file, `p2a-context.json`, is listed when missing
 - no existing file was overwritten without explicit user approval
 - `handoff-manifest.md` exists in each destination

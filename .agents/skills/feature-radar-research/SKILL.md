@@ -25,6 +25,8 @@ tools = only supporting mechanisms such as web search, fetch, read-only file ins
 
 Read `references/workflow.md` before acting.
 
+If the user requests `profile: tool-gap`, or asks specifically for independent supporting-tool opportunities, also read `references/tool-gap-profile.md` before planning the run. Keep `mode: idea | existing-project` unchanged and pass the profile to each subagent. Research artifact `mode`, `profile`, and `status` headers are authoritative and must be coherent; only legacy runs with no profile in any research artifact fall back to `general`. `_INDEX.md` is a derived view regenerated from those headers.
+
 If the user asks to hand off or export an existing run to a project, also read `references/handoff.md`.
 
 If the user asks to run research:
@@ -33,6 +35,8 @@ If the user asks to run research:
 2. Unless the user asks for a plan-only/chat-only answer or forbids file writes, create a native run directory under `.feature-radar/runs/<project-slug>/` before the final answer.
    - When working from this repository, prefer `python3 tools/radar_run.py init --slug <project-slug> --title <title> --mode idea`.
    - For existing local project research, use `--mode existing-project` and include `--local-project <path>`.
+   - Add `--profile tool-gap` only for Tool Gap research. The default and legacy fallback are `general`.
+   - Never use `init --overwrite` to change an existing run's mode; create a new slug or use an explicit migration workflow.
 3. Define a short research plan with search themes and source types.
 4. Use subagents when available:
    - local project scan, only when a local project path is provided
@@ -40,6 +44,7 @@ If the user asks to run research:
    - reference discovery
    - web source collection
    - GitHub signal scan
+   - opportunity synthesis, after its source and signal inputs are ready
    - evidence review
 5. Search the web and GitHub through the available environment tools.
 6. Store or summarize only source-backed findings.
@@ -59,9 +64,9 @@ If the user asks to hand off or export a completed run:
 
 1. Identify the source run path or project slug.
 2. Identify the target project path.
-3. Select the mode: `radar-native`, `p2a-preflight`, or `both`. Default to `radar-native` when the user does not specify.
+3. Select the handoff mode: `radar-native`, `p2a-preflight`, or `both`. Default to `radar-native` when the user does not specify.
 4. Copy only Feature Radar artifacts into the agreed destination directories.
-5. Create `handoff-manifest.md` in each destination.
+5. Regenerate `_INDEX.md` from authoritative research artifact metadata in each destination and create `handoff-manifest.md`. Record `source_complete`; for intentional incomplete export, separate missing required files from the sole optional file, `p2a-context.json`.
 6. Do not overwrite existing files unless the user explicitly requests overwrite or replace.
 
 ## Output
@@ -78,13 +83,15 @@ signal-map.md
 collection-report.md
 ```
 
-For existing project research, also produce these outputs when useful:
+For existing project research, all three of these outputs are required by the current run contract:
 
 ```text
 local-project-scan.md
 capability-gap-analysis.md
 next-iteration-recommendations.md
 ```
+
+When one of these files has no applicable content, keep it and record an explicit `N/A` with the reason.
 
 For handoff/export, create this file in each destination:
 
@@ -99,6 +106,8 @@ If the user only asks for a plan, do not create files. Return the plan in chat.
 - Preserve URLs for every concrete claim.
 - Separate official service claims from community complaints.
 - Treat GitHub issues as developer-heavy signals, not full market proof.
+- For `profile: tool-gap`, return zero to three supported opportunities. Use `insufficient_evidence` when coverage is too weak to decide and `no_supported_opportunity` when sufficient evidence rejects every candidate; never pad weak candidates.
+- Do not invent numeric opportunity or confidence scores without a named, versioned deterministic scorer.
 - Mark weak or stale evidence.
 - Do not overfit to SEO comparison pages.
 - Do not create P2A artifacts unless requested.

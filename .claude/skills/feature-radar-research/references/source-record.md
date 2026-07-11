@@ -3,7 +3,7 @@
 Use this compact source shape when collecting evidence:
 
 ```text
-id | source_type | title | url | publisher | observed_at | confidence | summary | caveat
+id | source_type | title | url | publisher | observed_at | recency | confidence | summary | claims | caveats
 ```
 
 `source_type` values:
@@ -18,6 +18,7 @@ id | source_type | title | url | publisher | observed_at | confidence | summary 
 - github_issue
 - github_pull_request
 - github_discussion
+- github_release
 - community_post
 - review_site
 - comparison_page
@@ -29,11 +30,12 @@ id | source_type | title | url | publisher | observed_at | confidence | summary 
 - local_api
 - local_schema
 - local_dependency
+- unknown
 
 For local project evidence, use:
 
 ```text
-id | source_type | path | line | symbol_or_area | observed_at | confidence | summary | caveat
+id | source_type | path | line | symbol_or_area | observed_at | confidence | summary | claims | caveats
 ```
 
 Do not use local evidence as a substitute for market demand. Local evidence can support claims about what exists, what is partial, what is risky, and what is cheap or expensive to change.

@@ -29,6 +29,7 @@ github_repository
 github_issue
 github_pull_request
 github_discussion
+github_release
 community_post
 review_site
 comparison_page

@@ -15,5 +15,13 @@ Inspect:
 Output:
 source id | repo/issue/PR URL | signal type | repeated request or pain | recency | intensity | confidence
 
-Do not treat one issue as market proof. Prioritize repeated or high-engagement signals. Preserve issue/PR/discussion URLs.
+Do not treat one issue as market proof. Prioritize repeated or high-engagement signals. Preserve issue/PR/discussion URLs. Mark whether each signal appears resolved, unresolved, or unclear.
+
+When the run declares profile: tool-gap, also:
+- classify evidence when supported as pain, workaround, duplicate, out_of_scope, wont_fix, stale, implemented, or unclear
+- record maintainer disposition and recurrence across repositories separately from engagement
+- surface counter-signals such as an implemented fix, a maintained alternative, weak recurrence, or a project-specific constraint
+- optionally suggest a tool-gap category, but do not generate or score an opportunity
+
+Keep the standard output unchanged for general research. Put tool-gap-only fields in a clearly labeled supplemental table and use unknown when the evidence does not support a classification.
 """

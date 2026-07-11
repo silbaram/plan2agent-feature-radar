@@ -29,6 +29,11 @@ MODE_ARTIFACTS = {
     "existing-project": CORE_ARTIFACTS + EXISTING_PROJECT_ARTIFACTS,
 }
 
+ALL_RESEARCH_ARTIFACTS = CORE_ARTIFACTS + EXISTING_PROJECT_ARTIFACTS
+MODE_VALUES = tuple(MODE_ARTIFACTS)
+PROFILE_VALUES = ("general", "tool-gap")
+STATUS_VALUES = ("draft", "complete")
+
 TEMPLATE_TITLES = {
     "research-plan.md": "Research Plan",
     "source-candidates.md": "Source Candidates",
@@ -88,11 +93,42 @@ def resolve_run(source_run: str) -> Path:
 
 
 def has_draft_status(text: str) -> bool:
-    return any(line.strip().lower() == "status: draft" for line in text.splitlines()[:12])
+    values = read_metadata_values(text, "status")
+    return len(values) == 1 and values[0].lower() == "draft"
 
 
 def has_complete_status(text: str) -> bool:
-    return any(line.strip().lower() == "status: complete" for line in text.splitlines()[:12])
+    values = read_metadata_values(text, "status")
+    return len(values) == 1 and values[0].lower() == "complete"
+
+
+def read_metadata_values(text: str, key: str) -> list[str]:
+    values: list[str] = []
+    metadata_started = False
+    title_skipped = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not metadata_started:
+            if not stripped:
+                continue
+            if not title_skipped and re.match(r"^#(?:\s|$)", stripped):
+                title_skipped = True
+                continue
+        elif not stripped or stripped.startswith("#"):
+            break
+
+        field, separator, value = stripped.partition(":")
+        if not separator or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", field.strip()):
+            break
+
+        metadata_started = True
+        if field.strip().lower() == key.lower():
+            values.append(value.strip())
+    return values
+
+
+def read_header_values(path: Path, key: str) -> list[str]:
+    return read_metadata_values(path.read_text(encoding="utf-8"), key)
 
 
 def artifact_template(
@@ -102,6 +138,7 @@ def artifact_template(
     slug: str,
     mode: str,
     local_project: str | None,
+    profile: str = "general",
 ) -> str:
     now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
     heading = TEMPLATE_TITLES[name]
@@ -171,6 +208,7 @@ def artifact_template(
 run_slug: {slug}
 title: {title}
 mode: {mode}
+profile: {profile}
 local_project: {local_project_line}
 created_at: {now}
 status: draft
@@ -179,19 +217,143 @@ status: draft
 
 
 def infer_mode(run_dir: Path) -> str:
-    for name in EXISTING_PROJECT_ARTIFACTS:
-        if (run_dir / name).is_file():
-            return "existing-project"
-    return "idea"
+    valid_headers: list[tuple[str, str]] = []
+    missing_headers: list[str] = []
+    invalid_headers: list[str] = []
+    present_headers: list[str] = []
+
+    for name in ALL_RESEARCH_ARTIFACTS:
+        path = run_dir / name
+        if not path.is_file():
+            continue
+        values = read_header_values(path, "mode")
+        if not values:
+            missing_headers.append(name)
+            continue
+
+        present_headers.append(name)
+        if len(values) != 1:
+            rendered = ", ".join(repr(value) for value in values)
+            invalid_headers.append(
+                f"{name}: expected one mode header, found {len(values)} ({rendered})"
+            )
+            continue
+
+        mode = values[0]
+        if mode not in MODE_VALUES:
+            allowed = ", ".join(MODE_VALUES)
+            invalid_headers.append(
+                f"{name}: invalid mode {mode!r}; expected one of: {allowed}"
+            )
+            continue
+        valid_headers.append((name, mode))
+
+    problems: list[str] = []
+    problems.extend(invalid_headers)
+    if present_headers and missing_headers:
+        problems.append(
+            "mode header is present in some existing research artifacts but missing "
+            f"from: {', '.join(missing_headers)}"
+        )
+
+    modes = {mode for _, mode in valid_headers}
+    if len(modes) > 1:
+        declarations = ", ".join(f"{name}={mode}" for name, mode in valid_headers)
+        problems.append(f"conflicting mode headers: {declarations}")
+
+    if not problems and len(modes) == 1 and "idea" in modes:
+        supplemental = [
+            name for name in EXISTING_PROJECT_ARTIFACTS if (run_dir / name).is_file()
+        ]
+        if supplemental:
+            problems.append(
+                "mode 'idea' cannot include existing-project supplemental artifacts: "
+                + ", ".join(supplemental)
+            )
+
+    if problems:
+        raise ValueError("mode integrity error:\n- " + "\n- ".join(problems))
+    if not present_headers:
+        return (
+            "existing-project"
+            if any((run_dir / name).is_file() for name in EXISTING_PROJECT_ARTIFACTS)
+            else "idea"
+        )
+    return valid_headers[0][1]
 
 
-def build_index(*, slug: str, title: str, mode: str, artifacts: list[str]) -> str:
+def infer_profile(run_dir: Path, mode: str | None = None) -> str:
+    # Profile is run-level metadata; mode remains accepted for API compatibility.
+    _ = mode
+    expected = ALL_RESEARCH_ARTIFACTS
+    valid_headers: list[tuple[str, str]] = []
+    missing_headers: list[str] = []
+    invalid_headers: list[str] = []
+    present_headers: list[str] = []
+
+    for name in expected:
+        path = run_dir / name
+        if not path.is_file():
+            continue
+        values = read_header_values(path, "profile")
+        if not values:
+            missing_headers.append(name)
+            continue
+
+        present_headers.append(name)
+        if len(values) != 1:
+            rendered = ", ".join(repr(value) for value in values)
+            invalid_headers.append(
+                f"{name}: expected one profile header, found {len(values)} ({rendered})"
+            )
+            continue
+
+        profile = values[0]
+        if profile not in PROFILE_VALUES:
+            allowed = ", ".join(PROFILE_VALUES)
+            invalid_headers.append(
+                f"{name}: invalid profile {profile!r}; expected one of: {allowed}"
+            )
+            continue
+        valid_headers.append((name, profile))
+
+    problems: list[str] = []
+    problems.extend(invalid_headers)
+    if present_headers and missing_headers:
+        problems.append(
+            "profile header is present in some existing expected artifacts but missing "
+            f"from: {', '.join(missing_headers)}"
+        )
+
+    profiles = {profile for _, profile in valid_headers}
+    if len(profiles) > 1:
+        declarations = ", ".join(
+            f"{name}={profile}" for name, profile in valid_headers
+        )
+        problems.append(f"conflicting profile headers: {declarations}")
+
+    if problems:
+        raise ValueError("profile integrity error:\n- " + "\n- ".join(problems))
+    if not present_headers:
+        return "general"
+    return valid_headers[0][1]
+
+
+def build_index(
+    *,
+    slug: str,
+    title: str,
+    mode: str,
+    artifacts: list[str],
+    profile: str = "general",
+) -> str:
     present = set(artifacts)
     lines = [
         f"# 이 run 읽는 법 ({slug})",
         "",
         f"title: {title}",
         f"mode: {mode}",
+        f"profile: {profile}",
         "",
         "Feature Radar run 산출물 안내. 파일은 결과 / 근거 / 범위 / 원본으로 나뉜다.",
         "파일은 일부러 flat 구조로 둔다 — tools/radar_run.py 와 tools/radar_handoff.py 가",
@@ -224,13 +386,27 @@ def build_index(*, slug: str, title: str, mode: str, artifacts: list[str]) -> st
     return "\n".join(lines)
 
 
-def write_index(run_dir: Path, *, slug: str, title: str, mode: str, overwrite: bool) -> None:
+def write_index(
+    run_dir: Path,
+    *,
+    slug: str,
+    title: str,
+    mode: str,
+    overwrite: bool,
+    profile: str = "general",
+) -> None:
     artifacts = [n for n in MODE_ARTIFACTS[mode] if (run_dir / n).is_file()]
     index_path = run_dir / INDEX_FILE
     if index_path.exists() and not overwrite:
         return
     index_path.write_text(
-        build_index(slug=slug, title=title, mode=mode, artifacts=artifacts),
+        build_index(
+            slug=slug,
+            title=title,
+            mode=mode,
+            profile=profile,
+            artifacts=artifacts,
+        ),
         encoding="utf-8",
     )
     print(f"wrote {index_path}")
@@ -241,12 +417,49 @@ def init_run(args: argparse.Namespace) -> int:
     run_dir = Path(".feature-radar") / "runs" / slug
     artifacts = MODE_ARTIFACTS[args.mode]
 
-    existing = [run_dir / name for name in artifacts if (run_dir / name).exists()]
+    if run_dir.exists() and not run_dir.is_dir():
+        print(f"error: run path is not a directory: {run_dir}", file=sys.stderr)
+        return 3
+    index_path = run_dir / INDEX_FILE
+    if index_path.exists() and not index_path.is_file():
+        print(f"error: index path is not a file: {index_path}", file=sys.stderr)
+        return 3
+
+    existing = [
+        run_dir / name
+        for name in ALL_RESEARCH_ARTIFACTS
+        if (run_dir / name).exists()
+    ]
     if existing and not args.overwrite:
         print("error: run artifact files already exist; rerun with --overwrite to replace")
         for path in existing:
             print(f"- {path}", file=sys.stderr)
         return 3
+
+    if existing and args.overwrite:
+        non_files = [path for path in existing if not path.is_file()]
+        if non_files:
+            print("error: cannot overwrite non-file run artifacts", file=sys.stderr)
+            for path in non_files:
+                print(f"- {path}", file=sys.stderr)
+            return 3
+        try:
+            existing_mode = infer_mode(run_dir)
+        except ValueError as exc:
+            print(
+                f"error: cannot safely overwrite an invalid existing run: {exc}",
+                file=sys.stderr,
+            )
+            print("hint: repair the existing run or initialize a new slug", file=sys.stderr)
+            return 2
+        if existing_mode != args.mode:
+            print(
+                "error: --overwrite cannot change an existing run mode "
+                f"from {existing_mode} to {args.mode}",
+                file=sys.stderr,
+            )
+            print("hint: initialize the new mode with a new slug", file=sys.stderr)
+            return 3
 
     run_dir.mkdir(parents=True, exist_ok=True)
     for name in artifacts:
@@ -259,6 +472,7 @@ def init_run(args: argparse.Namespace) -> int:
                 title=args.title,
                 slug=slug,
                 mode=args.mode,
+                profile=args.profile,
                 local_project=args.local_project,
             ),
             encoding="utf-8",
@@ -266,7 +480,12 @@ def init_run(args: argparse.Namespace) -> int:
         print(f"wrote {path}")
 
     write_index(
-        run_dir, slug=slug, title=args.title, mode=args.mode, overwrite=args.overwrite
+        run_dir,
+        slug=slug,
+        title=args.title,
+        mode=args.mode,
+        profile=args.profile,
+        overwrite=True,
     )
     print(f"run_dir: {run_dir}")
     return 0
@@ -278,9 +497,31 @@ def index_run(args: argparse.Namespace) -> int:
     except FileNotFoundError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    mode = args.mode or infer_mode(run_dir)
+    try:
+        mode = infer_mode(run_dir)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.mode and args.mode != mode:
+        print(
+            f"error: requested mode {args.mode} does not match run mode {mode}",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        profile = infer_profile(run_dir, mode)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     title = args.title or run_dir.name
-    write_index(run_dir, slug=run_dir.name, title=title, mode=mode, overwrite=True)
+    write_index(
+        run_dir,
+        slug=run_dir.name,
+        title=title,
+        mode=mode,
+        profile=profile,
+        overwrite=True,
+    )
     return 0
 
 
@@ -291,7 +532,25 @@ def validate_run(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
+    try:
+        resolved_mode = infer_mode(run_dir)
+        mode_error = None
+    except ValueError as exc:
+        resolved_mode = None
+        mode_error = str(exc)
+    if mode_error is None and resolved_mode != args.mode:
+        mode_error = (
+            "mode integrity error: "
+            f"requested mode {args.mode} does not match run mode {resolved_mode}"
+        )
+
     required = MODE_ARTIFACTS[args.mode]
+    try:
+        profile = infer_profile(run_dir, args.mode)
+        profile_error = None
+    except ValueError as exc:
+        profile = None
+        profile_error = str(exc)
     missing = [name for name in required if not (run_dir / name).is_file()]
     artifact_texts = {
         name: (run_dir / name).read_text(encoding="utf-8")
@@ -303,24 +562,42 @@ def validate_run(args: argparse.Namespace) -> int:
         for name, text in artifact_texts.items()
         if not text.strip()
     ]
-    draft = [
-        name
-        for name, text in artifact_texts.items()
-        if has_draft_status(text)
-    ]
-    incomplete = [
-        name
-        for name, text in artifact_texts.items()
-        if not has_complete_status(text)
-    ]
-    non_draft_incomplete = [
-        name
-        for name in incomplete
-        if name not in draft
-    ]
+    draft: list[str] = []
+    status_errors: list[str] = []
+    for name, text in artifact_texts.items():
+        values = read_metadata_values(text, "status")
+        if not values:
+            status_errors.append(f"{name}: missing status header")
+            continue
+        if len(values) != 1:
+            rendered = ", ".join(repr(value) for value in values)
+            status_errors.append(
+                f"{name}: expected one status header, found {len(values)} ({rendered})"
+            )
+            continue
+        raw_status = values[0]
+        status = raw_status.lower()
+        if status not in STATUS_VALUES:
+            allowed = ", ".join(STATUS_VALUES)
+            status_errors.append(
+                f"{name}: invalid status {raw_status!r}; expected one of: {allowed}"
+            )
+        elif status == "draft":
+            draft.append(name)
 
-    if missing or empty or (draft and not args.allow_draft) or non_draft_incomplete:
+    if (
+        mode_error
+        or profile_error
+        or missing
+        or empty
+        or status_errors
+        or (draft and not args.allow_draft)
+    ):
         print(f"run invalid: {run_dir}")
+        if mode_error:
+            print(mode_error)
+        if profile_error:
+            print(profile_error)
         if missing:
             print("missing files:")
             for name in missing:
@@ -329,19 +606,20 @@ def validate_run(args: argparse.Namespace) -> int:
             print("empty files:")
             for name in empty:
                 print(f"- {name}")
+        if status_errors:
+            print("invalid status headers:")
+            for error in status_errors:
+                print(f"- {error}")
         if draft and not args.allow_draft:
             print("draft files:")
             for name in draft:
                 print(f"- {name}")
-        if non_draft_incomplete:
-            print("missing complete status:")
-            for name in non_draft_incomplete:
-                print(f"- {name}")
-        if (draft and not args.allow_draft) or non_draft_incomplete:
+        if status_errors or (draft and not args.allow_draft):
             print("hint: complete the research content and set status: complete")
         return 1
 
     print(f"run valid: {run_dir}")
+    print(f"profile: {profile}")
     print("checked files:")
     for name in required:
         print(f"- {name}")
@@ -362,6 +640,12 @@ def main(argv: list[str]) -> int:
         choices=["idea", "existing-project"],
         default="idea",
         help="Run artifact set to initialize. Default: idea.",
+    )
+    init_parser.add_argument(
+        "--profile",
+        choices=PROFILE_VALUES,
+        default="general",
+        help="Research profile recorded in artifact headers. Default: general.",
     )
     init_parser.add_argument(
         "--local-project",
@@ -404,7 +688,10 @@ def main(argv: list[str]) -> int:
     index_parser.add_argument(
         "--mode",
         choices=["idea", "existing-project"],
-        help="Artifact set. Default: infer from existing files.",
+        help=(
+            "Assert the source run mode. Default: infer from artifact headers or "
+            "legacy structure."
+        ),
     )
     index_parser.add_argument("--title", help="Override index title. Default: run dir name.")
     index_parser.set_defaults(func=index_run)

@@ -1,4 +1,6 @@
 node_modules/
 dist/
 .feature-radar/
+__pycache__/
+*.py[cod]
 .DS_Store

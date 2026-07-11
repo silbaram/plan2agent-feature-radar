@@ -31,3 +31,11 @@ Rules:
 - Do not invent URLs.
 - Mark SEO/listicle sources as low confidence.
 - Keep raw search noise out of the result.
+
+When `profile: tool-gap` is active, also consume any seed repositories supplied in the research plan. Seeds are discovery anchors, not automatic selections. Search beyond them and add a clearly labeled repository-decision table:
+
+```text
+repository | origin (seed/discovered) | canonical URL | decision (selected/excluded) | decision reason | confidence | next action
+```
+
+Preserve every supplied seed in this table even when it is excluded. If no seeds were supplied, state that and use `discovered` for candidate repositories. Keep the standard output unchanged for general research.

@@ -14,19 +14,14 @@ import shutil
 import sys
 from pathlib import Path
 
+try:
+    from radar_run import build_index
+except ModuleNotFoundError:  # Support importing this file as tools.radar_handoff.
+    from .radar_run import build_index
 
-COPY_SET = [
-    "_INDEX.md",
-    "research-plan.md",
-    "source-candidates.md",
-    "research-bundle.md",
-    "signal-map.md",
-    "collection-report.md",
-    "local-project-scan.md",
-    "capability-gap-analysis.md",
-    "next-iteration-recommendations.md",
-    "p2a-context.json",
-]
+
+INDEX_FILE = "_INDEX.md"
+MANIFEST_FILE = "handoff-manifest.md"
 
 CORE_ARTIFACTS = [
     "research-plan.md",
@@ -42,12 +37,18 @@ EXISTING_PROJECT_ARTIFACTS = [
     "next-iteration-recommendations.md",
 ]
 
+RESEARCH_ARTIFACTS = CORE_ARTIFACTS + EXISTING_PROJECT_ARTIFACTS
+OPTIONAL_COPY_SET = ["p2a-context.json"]
+COPY_SET = [INDEX_FILE] + RESEARCH_ARTIFACTS + OPTIONAL_COPY_SET
+
 RUN_TYPE_ARTIFACTS = {
     "idea": CORE_ARTIFACTS,
     "existing-project": CORE_ARTIFACTS + EXISTING_PROJECT_ARTIFACTS,
 }
 
 RUN_TYPE_VALUES = set(RUN_TYPE_ARTIFACTS)
+PROFILE_VALUES = ("general", "tool-gap")
+STATUS_VALUES = ("draft", "complete")
 
 
 def slugify(value: str) -> str:
@@ -70,24 +71,59 @@ def resolve_source_run(source_run: str) -> Path:
     )
 
 
-def has_draft_status(path: Path) -> bool:
-    text = path.read_text(encoding="utf-8")
-    return any(line.strip().lower() == "status: draft" for line in text.splitlines()[:12])
-
-
 def read_header_value(path: Path, key: str) -> str | None:
-    key_prefix = f"{key.lower()}:"
-    for line in path.read_text(encoding="utf-8").splitlines()[:20]:
+    values = read_header_values(path, key)
+    if not values:
+        return None
+    return values[0] or None
+
+
+def read_header_values(path: Path, key: str) -> list[str]:
+    values: list[str] = []
+    metadata_started = False
+    title_skipped = False
+    for line in path.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
-        if stripped.lower().startswith(key_prefix):
-            value = stripped.split(":", 1)[1].strip()
-            return value or None
-    return None
+        if not metadata_started:
+            if not stripped:
+                continue
+            if not title_skipped and re.match(r"^#(?:\s|$)", stripped):
+                title_skipped = True
+                continue
+        elif not stripped or stripped.startswith("#"):
+            break
+
+        field, separator, value = stripped.partition(":")
+        if not separator or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", field.strip()):
+            break
+
+        metadata_started = True
+        if field.strip().lower() == key.lower():
+            values.append(value.strip())
+    return values
+
+
+def read_status(path: Path) -> tuple[str | None, str | None]:
+    values = read_header_values(path, "status")
+    if len(values) != 1:
+        rendered = ", ".join(repr(value) for value in values) or "none"
+        return None, f"expected one status header, found {len(values)} ({rendered})"
+
+    status = values[0].lower()
+    if status not in STATUS_VALUES:
+        allowed = ", ".join(STATUS_VALUES)
+        return None, f"invalid status {values[0]!r}; expected one of: {allowed}"
+    return status, None
+
+
+def has_draft_status(path: Path) -> bool:
+    status, error = read_status(path)
+    return error is None and status == "draft"
 
 
 def has_complete_status(path: Path) -> bool:
-    text = path.read_text(encoding="utf-8")
-    return any(line.strip().lower() == "status: complete" for line in text.splitlines()[:12])
+    status, error = read_status(path)
+    return error is None and status == "complete"
 
 
 def is_empty_file(path: Path) -> bool:
@@ -123,21 +159,148 @@ def build_destinations(
 
 
 def infer_run_type(source_run: Path, explicit_run_type: str | None) -> tuple[str, str]:
-    if explicit_run_type:
-        return explicit_run_type, "explicit"
+    valid_headers: list[tuple[str, str]] = []
+    present_headers: list[str] = []
+    missing_headers: list[str] = []
+    invalid_headers: list[str] = []
+    present_artifacts: list[str] = []
 
-    candidates = ["research-plan.md"] + [
-        name for name in COPY_SET if name != "research-plan.md"
-    ]
-    for name in candidates:
+    for name in RESEARCH_ARTIFACTS:
         path = source_run / name
         if not path.is_file():
             continue
-        mode = read_header_value(path, "mode")
-        if mode in RUN_TYPE_VALUES:
-            return mode, f"header:{name}"
+        present_artifacts.append(name)
+        values = read_header_values(path, "mode")
+        if not values:
+            missing_headers.append(name)
+            continue
 
-    return "idea", "fallback"
+        present_headers.append(name)
+        if len(values) != 1:
+            rendered = ", ".join(repr(value) for value in values)
+            invalid_headers.append(
+                f"{name}: expected one mode header, found {len(values)} ({rendered})"
+            )
+            continue
+
+        mode = values[0]
+        if mode not in RUN_TYPE_VALUES:
+            allowed = ", ".join(sorted(RUN_TYPE_VALUES))
+            invalid_headers.append(
+                f"{name}: invalid mode {mode!r}; expected one of: {allowed}"
+            )
+            continue
+        valid_headers.append((name, mode))
+
+    problems = list(invalid_headers)
+    if present_headers and missing_headers:
+        problems.append(
+            "mode header is present in some research artifacts but missing from: "
+            f"{', '.join(missing_headers)}"
+        )
+
+    modes = {mode for _, mode in valid_headers}
+    if len(modes) > 1:
+        declarations = ", ".join(
+            f"{name}={mode}" for name, mode in valid_headers
+        )
+        problems.append(f"conflicting mode headers: {declarations}")
+
+    if problems:
+        raise ValueError("mode integrity error:\n- " + "\n- ".join(problems))
+
+    if present_headers:
+        run_type = valid_headers[0][1]
+        run_type_source = "headers:" + ",".join(name for name, _ in valid_headers)
+    else:
+        run_type = (
+            "existing-project"
+            if any(name in present_artifacts for name in EXISTING_PROJECT_ARTIFACTS)
+            else "idea"
+        )
+        run_type_source = "legacy:structure"
+
+    unexpected = [
+        name
+        for name in EXISTING_PROJECT_ARTIFACTS
+        if run_type == "idea" and name in present_artifacts
+    ]
+    if unexpected:
+        raise ValueError(
+            "mode integrity error:\n- idea run contains existing-project artifacts: "
+            + ", ".join(unexpected)
+        )
+
+    if explicit_run_type and explicit_run_type != run_type:
+        raise ValueError(
+            "mode integrity error:\n- explicit run type "
+            f"{explicit_run_type!r} conflicts with source run mode {run_type!r}"
+        )
+    if explicit_run_type:
+        return run_type, f"explicit-confirmed:{run_type_source}"
+
+    return run_type, run_type_source
+
+
+def infer_profile(
+    source_run: Path, run_type: str | None = None
+) -> tuple[str, str]:
+    if run_type is None:
+        run_type, _ = infer_run_type(source_run, None)
+    expected = RESEARCH_ARTIFACTS
+    valid_headers: list[tuple[str, str]] = []
+    missing_headers: list[str] = []
+    invalid_headers: list[str] = []
+    present_headers: list[str] = []
+
+    for name in expected:
+        path = source_run / name
+        if not path.is_file():
+            continue
+        values = read_header_values(path, "profile")
+        if not values:
+            missing_headers.append(name)
+            continue
+
+        present_headers.append(name)
+        if len(values) != 1:
+            rendered = ", ".join(repr(value) for value in values)
+            invalid_headers.append(
+                f"{name}: expected one profile header, found {len(values)} ({rendered})"
+            )
+            continue
+
+        profile = values[0]
+        if profile not in PROFILE_VALUES:
+            allowed = ", ".join(PROFILE_VALUES)
+            invalid_headers.append(
+                f"{name}: invalid profile {profile!r}; expected one of: {allowed}"
+            )
+            continue
+        valid_headers.append((name, profile))
+
+    problems: list[str] = []
+    problems.extend(invalid_headers)
+    if present_headers and missing_headers:
+        problems.append(
+            "profile header is present in some existing expected artifacts but missing "
+            f"from: {', '.join(missing_headers)}"
+        )
+
+    profiles = {profile for _, profile in valid_headers}
+    if len(profiles) > 1:
+        declarations = ", ".join(
+            f"{name}={profile}" for name, profile in valid_headers
+        )
+        problems.append(f"conflicting profile headers: {declarations}")
+
+    if problems:
+        raise ValueError("profile integrity error:\n- " + "\n- ".join(problems))
+    if not present_headers:
+        return "general", "legacy:no-profile"
+    profile = valid_headers[0][1]
+    sources = ",".join(name for name, _ in valid_headers)
+    return profile, f"headers:{sources}"
 
 
 def manifest_text(
@@ -149,31 +312,49 @@ def manifest_text(
     p2a_project_id: str,
     overwrite_policy: str,
     copied_files: list[str],
+    missing_required_files: list[str],
     missing_optional_files: list[str],
     caveats: list[str],
+    profile: str = "general",
+    run_mode: str = "idea",
+    source_complete: bool = True,
 ) -> str:
     now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
     copied = "\n".join(f"- {name}" for name in copied_files) or "- none"
-    missing = "\n".join(f"- {name}" for name in missing_optional_files) or "- none"
+    missing_required = (
+        "\n".join(f"- {name}" for name in missing_required_files) or "- none"
+    )
+    missing_optional = (
+        "\n".join(f"- {name}" for name in missing_optional_files) or "- none"
+    )
     caveat_text = "\n".join(f"- {item}" for item in caveats) or "- none"
 
+    # Keep `mode` as the compatibility alias used by existing manifest readers.
     return f"""# Feature Radar Handoff Manifest
 
 source_run: {source_run}
 project_slug: {project_slug}
 target_project: {target_project}
 mode: {mode}
+run_mode: {run_mode}
+profile: {profile}
+handoff_mode: {mode}
 p2a_project_id: {p2a_project_id}
 created_at: {now}
 overwrite_policy: {overwrite_policy}
+source_complete: {str(source_complete).lower()}
 
 ## Copied Files
 
 {copied}
 
+## Missing Required Files
+
+{missing_required}
+
 ## Missing Optional Files
 
-{missing}
+{missing_optional}
 
 ## Caveats
 
@@ -218,7 +399,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument(
         "--run-type",
         choices=["idea", "existing-project"],
-        help="Expected source run artifact set for complete validation. Defaults to source run mode header, then idea.",
+        help="Assert the expected source run type. Defaults to coherent artifact mode headers, then legacy structural inference.",
     )
     parser.add_argument(
         "--require-complete",
@@ -253,36 +434,69 @@ def main(argv: list[str]) -> int:
         mode=args.mode,
         project_id=project_id,
     )
-    run_type, run_type_source = infer_run_type(source_run, args.run_type)
+    try:
+        run_type, run_type_source = infer_run_type(source_run, args.run_type)
+        profile, profile_source = infer_profile(source_run, run_type)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
 
-    existing_sources = [name for name in COPY_SET if (source_run / name).is_file()]
-    missing_optional = [name for name in COPY_SET if name not in existing_sources]
     required_sources = RUN_TYPE_ARTIFACTS[run_type]
+    present_required = [
+        name for name in required_sources if (source_run / name).is_file()
+    ]
     missing_required = [
         name for name in required_sources if not (source_run / name).is_file()
     ]
+    present_optional = [
+        name for name in OPTIONAL_COPY_SET if (source_run / name).is_file()
+    ]
+    missing_optional = [
+        name for name in OPTIONAL_COPY_SET if not (source_run / name).is_file()
+    ]
+    copy_sources = present_required + present_optional
+    transferred_files = [INDEX_FILE] + copy_sources
     empty_required = [
         name
         for name in required_sources
         if (source_run / name).is_file() and is_empty_file(source_run / name)
     ]
+    statuses = {
+        name: read_status(source_run / name)
+        for name in present_required
+    }
+    status_errors = [
+        f"{name}: {error}"
+        for name, (_, error) in statuses.items()
+        if error is not None
+    ]
     draft_required = [
         name
-        for name in required_sources
-        if (source_run / name).is_file() and has_draft_status(source_run / name)
+        for name, (status, error) in statuses.items()
+        if error is None and status == "draft"
     ]
     incomplete_required = [
         name
-        for name in required_sources
-        if (source_run / name).is_file() and not has_complete_status(source_run / name)
+        for name, (status, error) in statuses.items()
+        if error is not None or status != "complete"
     ]
 
-    if not existing_sources:
+    if not present_required:
         print(
             f"error: no expected Feature Radar artifacts found in {source_run}",
             file=sys.stderr,
         )
         return 2
+    if status_errors:
+        print("error: invalid authoritative status metadata", file=sys.stderr)
+        for error in status_errors:
+            print(f"- {error}", file=sys.stderr)
+        print(
+            "hint: each present research artifact must declare exactly one status: draft or status: complete",
+            file=sys.stderr,
+        )
+        return 2
+
     require_complete = not args.allow_incomplete
     if require_complete and (missing_required or empty_required or incomplete_required):
         print(
@@ -317,13 +531,64 @@ def main(argv: list[str]) -> int:
         )
         return 2
 
-    conflicts: list[Path] = []
+    source_complete = not (
+        missing_required or empty_required or incomplete_required
+    )
+    title_path = source_run / "research-plan.md"
+    title = (
+        read_header_value(title_path, "title")
+        if title_path.is_file()
+        else None
+    ) or project_slug
+    index_text = build_index(
+        slug=project_slug,
+        title=title,
+        mode=run_type,
+        profile=profile,
+        artifacts=present_required,
+    )
+
+    managed_names = [*COPY_SET, MANIFEST_FILE]
+    output_names = {*transferred_files, MANIFEST_FILE}
+    destination_existing: dict[Path, list[Path]] = {}
+    preflight_errors: list[str] = []
     for _, destination in destinations:
-        for name in existing_sources:
-            if (destination / name).exists():
-                conflicts.append(destination / name)
-        if (destination / "handoff-manifest.md").exists():
-            conflicts.append(destination / "handoff-manifest.md")
+        if destination.resolve() == source_run.resolve():
+            preflight_errors.append(
+                f"destination is the source run itself: {destination}"
+            )
+
+        ancestor = destination
+        while not ancestor.exists() and not ancestor.is_symlink():
+            ancestor = ancestor.parent
+        if not ancestor.is_dir():
+            preflight_errors.append(
+                f"destination parent is not a directory: {ancestor}"
+            )
+
+        existing_paths: list[Path] = []
+        for name in managed_names:
+            path = destination / name
+            if not path.exists() and not path.is_symlink():
+                continue
+            existing_paths.append(path)
+            if args.overwrite and not path.is_file() and not path.is_symlink():
+                preflight_errors.append(
+                    f"cannot overwrite non-file destination artifact: {path}"
+                )
+        destination_existing[destination] = existing_paths
+
+    if preflight_errors:
+        print("error: destination preflight failed", file=sys.stderr)
+        for error in preflight_errors:
+            print(f"- {error}", file=sys.stderr)
+        return 3
+
+    conflicts = [
+        path
+        for existing_paths in destination_existing.values()
+        for path in existing_paths
+    ]
 
     if conflicts and not args.overwrite:
         print("error: destination files already exist; rerun with --overwrite to replace")
@@ -335,20 +600,49 @@ def main(argv: list[str]) -> int:
     caveats = [
         "Research conclusions were copied without rewriting.",
         "p2a-context.json is copied only when present in the source run.",
+        "_INDEX.md was regenerated from authoritative research artifact metadata.",
     ]
+    if args.overwrite:
+        caveats.append(
+            "Managed destination artifacts were synchronized under explicit --overwrite."
+        )
+    if not source_complete:
+        caveats.append("Source run was exported with --allow-incomplete.")
+        if missing_required:
+            caveats.append(
+                "Missing required files: " + ", ".join(missing_required)
+            )
+        if empty_required:
+            caveats.append("Empty required files: " + ", ".join(empty_required))
+        if incomplete_required:
+            caveats.append(
+                "Required files without status: complete: "
+                + ", ".join(incomplete_required)
+            )
 
     for mode, destination in destinations:
         print(f"{mode}: {destination}")
         print(f"  run type: {run_type} ({run_type_source})")
-        for name in existing_sources:
+        print(f"  profile: {profile} ({profile_source})")
+        if args.overwrite:
+            for path in destination_existing[destination]:
+                action = "replace" if path.name in output_names else "remove stale"
+                print(f"  {action} {path}")
+        print(f"  generate {destination / INDEX_FILE}")
+        for name in copy_sources:
             print(f"  copy {source_run / name} -> {destination / name}")
 
         if args.dry_run:
-            print(f"  write manifest -> {destination / 'handoff-manifest.md'}")
+            print(f"  write manifest -> {destination / MANIFEST_FILE}")
             continue
 
         destination.mkdir(parents=True, exist_ok=True)
-        for name in existing_sources:
+        if args.overwrite:
+            for path in destination_existing[destination]:
+                if path.exists() or path.is_symlink():
+                    path.unlink()
+        (destination / INDEX_FILE).write_text(index_text, encoding="utf-8")
+        for name in copy_sources:
             shutil.copy2(source_run / name, destination / name)
 
         manifest = manifest_text(
@@ -356,14 +650,18 @@ def main(argv: list[str]) -> int:
             project_slug=project_slug,
             target_project=target_project,
             mode=mode,
+            run_mode=run_type,
+            profile=profile,
             p2a_project_id=project_id,
             overwrite_policy=overwrite_policy,
-            copied_files=existing_sources,
+            source_complete=source_complete,
+            copied_files=transferred_files,
+            missing_required_files=missing_required,
             missing_optional_files=missing_optional,
             caveats=caveats,
         )
-        (destination / "handoff-manifest.md").write_text(manifest, encoding="utf-8")
-        print(f"  wrote {destination / 'handoff-manifest.md'}")
+        (destination / MANIFEST_FILE).write_text(manifest, encoding="utf-8")
+        print(f"  wrote {destination / MANIFEST_FILE}")
 
     if missing_optional:
         print("missing optional files:")

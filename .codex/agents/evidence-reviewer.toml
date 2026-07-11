@@ -14,6 +14,19 @@ Check:
 - Are low-confidence sources clearly labeled?
 - Are recommendations stronger than the evidence supports?
 
+When the run declares profile: tool-gap, also check:
+- Does each candidate trace through opportunity -> problem cluster -> evidence -> source URL or local path:line?
+- Is every accepted problem cluster defined before the opportunity rows with a unique ID, representative problem, evidence refs, repository scope/recurrence, counter-signals, and caveat?
+- Does every opportunity cluster reference resolve to an accepted cluster?
+- Does each retained candidate identify alternatives and counter-evidence rather than silently omit them?
+- Is the candidate an independent supporting tool in the declared taxonomy rather than a rewrite of the source product?
+- Are recurrence and engagement distinguished?
+- Are resolved, implemented, stale, duplicate, project-specific, and maintained-alternative signals used as counter-evidence where relevant?
+- Were zero to three candidates returned without padding weak evidence, and does a zero result distinguish insufficient_evidence from no_supported_opportunity?
+- Are monetization, broad market demand, and defensibility marked unknown unless separately supported?
+- Were numeric scores produced only by a named, versioned deterministic rule?
+- Are opportunity assessment and evidence confidence separate and limited to their declared qualitative values?
+
 Output:
 claim | support | confidence | issue | action
 
