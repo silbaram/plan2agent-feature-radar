@@ -1,6 +1,6 @@
 ---
 name: feature-radar-research
-description: Use when the user wants Feature Radar to research a product idea, research an existing local project, or hand off a completed run to a target project from web, service, docs, changelog, GitHub, issue, PR, discussion, community, local code, or existing run artifacts using skill/subagent workflow.
+description: Research product ideas or existing local projects from web, docs, changelogs, GitHub, community, and local-code evidence; identify feature gaps, Tool Gap opportunities, and next enhancements; or hand off completed Feature Radar runs. Use for research and export, not implementation.
 ---
 
 # Feature Radar Research
@@ -20,6 +20,25 @@ skill = decides research scope, subagent split, and output contract
 subagents = search, collect, compare, scan, and review evidence
 tools = only supporting mechanisms such as web search, fetch, read-only file inspection, file copy/write for requested outputs, or GitHub access
 ```
+
+## Invocation Contract
+
+Resolve each request before acting:
+
+- `action`: default to `research`; use `handoff` when the user explicitly asks to export or copy an existing run.
+- `research_mode`: use `existing-project` when the request names a local path or explicitly makes the current repository the research subject; otherwise use `idea`. Map this user-facing field to artifact header `mode`.
+- `profile`: use `tool-gap` for an explicit Tool Gap, supporting-tool, independent-tool, CLI, plugin, adapter, testing-tool, debugging-tool, or observability-tool opportunity request; otherwise use `general`.
+- `output`: default to `native-run`; use `chat-only` only when explicitly requested or file writes are forbidden.
+
+Explicit valid values override inference. Do not silently repair an invalid explicit value; show its allowed values before creating files. Before starting, state the resolved contract in one concise line and include the planned run path when writing:
+
+```text
+Resolved: action=<research|handoff>, research_mode=<idea|existing-project>, profile=<general|tool-gap>, output=<native-run|chat-only> -> <run-path>
+```
+
+Do not ask merely because a field was omitted. Ask one concise question only when the research subject cannot be identified, multiple projects or runs are plausible, research versus handoff materially changes the requested artifacts, a handoff source or target cannot be resolved, or overwrite approval is required.
+
+For handoff, require a source run and target path and default `handoff_mode` to `radar-native`. Derive a readable English run slug when omitted.
 
 ## Workflow
 

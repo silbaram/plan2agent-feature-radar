@@ -1,0 +1,4 @@
+interface:
+  display_name: "Feature Radar Research"
+  short_description: "Research ideas and local projects with evidence"
+  default_prompt: "Use $feature-radar-research to research <idea or local project>; infer defaults, or override profile=<general|tool-gap>, research_mode=<idea|existing-project>, and output=<native-run|chat-only>."

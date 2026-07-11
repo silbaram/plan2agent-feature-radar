@@ -180,6 +180,14 @@ In Codex, invoke the repo skill explicitly:
 $feature-radar-research 조사해줘: Jira 같은 시스템의 서비스/웹/GitHub 자료를 수집하고 근거를 정리해줘.
 ```
 
+The skill infers safe defaults when fields are omitted: `research_mode` is `idea` or `existing-project`, `profile` is `general` or `tool-gap`, and `output` is `native-run` or `chat-only`. Use explicit fields only to override those defaults. `research_mode` describes the research subject and remains separate from `handoff_mode`.
+
+For example, this request infers `research_mode: idea`, `profile: tool-gap`, and `output: native-run` without requiring option syntax:
+
+```text
+$feature-radar-research AI agent debugging 생태계의 독립형 CLI·플러그인 기회를 조사해줘.
+```
+
 For delegated research, ask Codex to parallelize independent collection and then run synthesis and review after their inputs are ready:
 
 ```text
@@ -239,7 +247,7 @@ python3 tools/radar_run.py validate \
 To hand off a completed run to a project, provide the run slug, target project path, and export mode:
 
 ```text
-$feature-radar-research plan2agent-memory run을 /path/to/my-app 프로젝트로 handoff 해줘. mode는 both로 하고, P2A project id는 my-app으로 써줘.
+$feature-radar-research plan2agent-memory run을 /path/to/my-app 프로젝트로 handoff 해줘. handoff_mode는 both로 하고, P2A project id는 my-app으로 써줘.
 ```
 
 Handoff modes:
