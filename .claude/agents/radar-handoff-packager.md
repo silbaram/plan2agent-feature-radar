@@ -14,6 +14,7 @@ Inputs:
 - target project path
 - handoff mode: `radar-native`, `p2a-preflight`, or `both`
 - optional P2A project id
+- preflight sequence, required for `p2a-preflight` or `both` (for example `001-kubernetes-users`)
 - optional overwrite policy
 
 Default destinations:
@@ -23,7 +24,7 @@ radar-native:
   <target-project>/.feature-radar/runs/<project-slug>/
 
 p2a-preflight:
-  <target-project>/.plan2agent/artifacts/<project-id>/preflight-research/
+  <target-project>/.plan2agent/artifacts/<project-id>/preflight-research/<sequence>/
 ```
 
 Transfer only the Feature Radar artifacts required by the resolved `run_mode`:
@@ -50,6 +51,7 @@ Create `handoff-manifest.md` in each destination with:
 - optional `mode` compatibility alias for `handoff_mode`; never use it for `run_mode`
 - `source_complete`: true only when every required artifact is present, non-empty, and declares exactly one `status: complete`
 - P2A project id, when relevant
+- preflight sequence for P2A output; `none` for radar-native output
 - copied files
 - missing required files
 - missing optional files
@@ -65,6 +67,8 @@ Rules:
 - Require complete research by default. Only an explicitly requested incomplete export may set `source_complete: false`, and it must list missing required files separately from `p2a-context.json`.
 - Reject self-handoff and non-file managed destination paths before writing. With explicit overwrite, replace or remove only recognized managed artifacts so stale destination files cannot contradict the manifest.
 - Do not overwrite existing files unless the user explicitly requests overwrite or replace.
+- Validate the preflight sequence as one lowercase directory component with a numeric prefix. Reject traversal and nested paths.
+- A `p2a-preflight`-only handoff must not create a target `.feature-radar/` directory. Different sequences must coexist without overwrite.
 - If target files exist, report the conflict and propose a safe next action.
 - Do not copy secrets, dependency directories, build output, generated caches, or raw crawl logs.
 - Preserve original artifact content; do not rewrite research conclusions during handoff.

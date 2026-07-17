@@ -77,8 +77,8 @@ local project path
 completed Feature Radar run
   -> Feature Radar skill
   -> radar handoff packager subagent
-  -> target project .feature-radar/runs/<project-slug>/
-  -> optional target project .plan2agent/artifacts/<project-id>/preflight-research/
+  -> target project .plan2agent/artifacts/<project-id>/preflight-research/<sequence>/
+  -> optional Radar archive .feature-radar/runs/<project-slug>/
   -> handoff manifest
 ```
 
@@ -257,7 +257,7 @@ radar-native
   -> /path/to/my-app/.feature-radar/runs/<project-slug>/
 
 p2a-preflight
-  -> /path/to/my-app/.plan2agent/artifacts/<project-id>/preflight-research/
+  -> /path/to/my-app/.plan2agent/artifacts/<project-id>/preflight-research/<sequence>/
 
 both
   -> both destinations
@@ -269,11 +269,12 @@ Optional helper script:
 python3 tools/radar_handoff.py \
   --source-run plan2agent-memory \
   --target-project /path/to/my-app \
-  --mode both \
-  --project-id my-app
+  --mode p2a-preflight \
+  --project-id my-app \
+  --sequence 001-plan2agent-memory
 ```
 
-`radar_handoff.py` validates complete runs by default, infers source `run_mode` from coherent research artifact metadata, and regenerates `_INDEX.md` in each destination. It preserves source `profile` and records destination `handoff_mode` separately. The command-line `--mode both` selection creates two manifests, one with `handoff_mode: radar-native` and one with `handoff_mode: p2a-preflight`; no individual manifest stores `both`. A manifest `mode` field, when retained for compatibility, aliases `handoff_mode` and never means `run_mode`. `--run-type` is an expected-run-type assertion, not a source-header override. Use `--allow-incomplete` only when intentionally exporting draft research; such manifests set `source_complete: false` and separate missing required files from the sole optional file, `p2a-context.json`. `--overwrite` synchronizes only recognized managed artifacts, removing stale managed files that are absent from the source so the destination remains consistent with its manifest; self-handoff and non-file artifact conflicts are rejected before writing.
+`--sequence` is required for `p2a-preflight` and `both`, and creates an independent directory such as `001-kubernetes-users`; later investigations can use `002-...` without overwriting earlier evidence. `p2a-preflight` alone does not create `.feature-radar/` in the target project. `radar_handoff.py` validates complete runs by default, infers source `run_mode` from coherent research artifact metadata, and regenerates `_INDEX.md` in each destination. It preserves source `profile` and records destination `handoff_mode` separately. The command-line `--mode both` selection creates two manifests, one with `handoff_mode: radar-native` and one with `handoff_mode: p2a-preflight`; no individual manifest stores `both`. A manifest `mode` field, when retained for compatibility, aliases `handoff_mode` and never means `run_mode`. `--run-type` is an expected-run-type assertion, not a source-header override. Use `--allow-incomplete` only when intentionally exporting draft research; such manifests set `source_complete: false` and separate missing required files from the sole optional file, `p2a-context.json`. `--overwrite` synchronizes only recognized managed artifacts inside the selected sequence, removing stale managed files that are absent from the source so the destination remains consistent with its manifest; self-handoff and non-file artifact conflicts are rejected before writing.
 
 In Claude Code, invoke the project skill:
 

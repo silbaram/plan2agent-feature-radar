@@ -724,6 +724,93 @@ class RadarProfileCliTests(unittest.TestCase):
                 [f"- {optional_name}"],
             )
 
+    def test_p2a_preflight_requires_sequence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            result, run_dir = self.init_run(cwd, "sequence-required", mode="idea")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            complete_artifacts(run_dir, CORE_ARTIFACTS)
+            target = cwd / "target"
+
+            handoff = self.run_cli(
+                RADAR_HANDOFF,
+                "--source-run",
+                str(run_dir),
+                "--target-project",
+                str(target),
+                "--mode",
+                "p2a-preflight",
+                cwd=cwd,
+            )
+
+            self.assertEqual(handoff.returncode, 2)
+            self.assertIn("--sequence is required", handoff.stderr)
+            self.assertFalse(target.exists())
+
+    def test_p2a_preflight_uses_sequence_without_radar_native_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            result, run_dir = self.init_run(cwd, "sequence-export", mode="idea")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            complete_artifacts(run_dir, CORE_ARTIFACTS)
+            target = cwd / "target"
+
+            for sequence in ("001-kubernetes-users", "002-competitive-followup"):
+                handoff = self.run_cli(
+                    RADAR_HANDOFF,
+                    "--source-run",
+                    str(run_dir),
+                    "--target-project",
+                    str(target),
+                    "--mode",
+                    "p2a-preflight",
+                    "--sequence",
+                    sequence,
+                    cwd=cwd,
+                )
+                self.assertEqual(
+                    handoff.returncode, 0, handoff.stdout + handoff.stderr
+                )
+                destination = (
+                    target
+                    / ".plan2agent"
+                    / "artifacts"
+                    / "target"
+                    / "preflight-research"
+                    / sequence
+                )
+                manifest = destination / "handoff-manifest.md"
+                self.assertTrue(manifest.is_file())
+                self.assertEqual(
+                    read_header_value(manifest, "preflight_sequence"), sequence
+                )
+
+            self.assertFalse((target / ".feature-radar").exists())
+
+    def test_p2a_preflight_rejects_unsafe_sequence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            result, run_dir = self.init_run(cwd, "unsafe-sequence", mode="idea")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            complete_artifacts(run_dir, CORE_ARTIFACTS)
+
+            for sequence in ("../001-escape", "001/nested", "Kubernetes-Users"):
+                with self.subTest(sequence=sequence):
+                    handoff = self.run_cli(
+                        RADAR_HANDOFF,
+                        "--source-run",
+                        str(run_dir),
+                        "--target-project",
+                        str(cwd / "target"),
+                        "--mode",
+                        "p2a-preflight",
+                        "--sequence",
+                        sequence,
+                        cwd=cwd,
+                    )
+                    self.assertEqual(handoff.returncode, 2)
+                    self.assertIn("invalid preflight sequence", handoff.stderr)
+
     def test_both_handoff_writes_destination_specific_manifest_axes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             cwd = Path(tmp)
@@ -742,6 +829,8 @@ class RadarProfileCliTests(unittest.TestCase):
                 str(target),
                 "--mode",
                 "both",
+                "--sequence",
+                "001-both-handoff",
                 cwd=cwd,
             )
             self.assertEqual(handoff.returncode, 0, handoff.stdout + handoff.stderr)
@@ -755,7 +844,8 @@ class RadarProfileCliTests(unittest.TestCase):
                 / ".plan2agent"
                 / "artifacts"
                 / "both-target"
-                / "preflight-research",
+                / "preflight-research"
+                / "001-both-handoff",
             }
             for handoff_mode, destination in destinations.items():
                 with self.subTest(handoff_mode=handoff_mode):
@@ -771,6 +861,14 @@ class RadarProfileCliTests(unittest.TestCase):
                     self.assertEqual(read_header_value(manifest, "mode"), handoff_mode)
                     self.assertEqual(
                         read_header_value(manifest, "source_complete"), "true"
+                    )
+                    self.assertEqual(
+                        read_header_value(manifest, "preflight_sequence"),
+                        (
+                            "001-both-handoff"
+                            if handoff_mode == "p2a-preflight"
+                            else "none"
+                        ),
                     )
                     copied_index = destination / INDEX_FILE
                     self.assertEqual(read_header_value(copied_index, "mode"), "idea")
@@ -983,6 +1081,7 @@ class RadarProfileCliTests(unittest.TestCase):
                 / "artifacts"
                 / "atomic-target"
                 / "preflight-research"
+                / "001-atomic-both"
             )
 
             radar_destination.mkdir(parents=True)
@@ -1008,6 +1107,8 @@ class RadarProfileCliTests(unittest.TestCase):
                 str(target),
                 "--mode",
                 "both",
+                "--sequence",
+                "001-atomic-both",
                 "--overwrite",
                 cwd=cwd,
             )

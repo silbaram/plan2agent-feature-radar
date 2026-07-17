@@ -149,3 +149,5 @@ destination | run_mode | profile | handoff_mode | source_complete | copied files
 For handoff, the only optional copy-set file is `p2a-context.json`; `_INDEX.md` is regenerated in each destination.
 
 Do not write P2A artifacts from this skill unless the user explicitly requests handoff mode `p2a-preflight` or `both`.
+
+For P2A handoff, package each investigation under `.plan2agent/artifacts/<project-id>/preflight-research/<sequence>/`, using a sequence such as `001-kubernetes-users`. A `p2a-preflight` handoff does not create `.feature-radar/` in the target project.

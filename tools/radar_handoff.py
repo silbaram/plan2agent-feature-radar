@@ -49,11 +49,22 @@ RUN_TYPE_ARTIFACTS = {
 RUN_TYPE_VALUES = set(RUN_TYPE_ARTIFACTS)
 PROFILE_VALUES = ("general", "tool-gap")
 STATUS_VALUES = ("draft", "complete")
+PREFLIGHT_SEQUENCE_PATTERN = re.compile(r"^[0-9]+(?:-[a-z0-9]+)*$")
 
 
 def slugify(value: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
     return slug or "project"
+
+
+def validate_preflight_sequence(value: str) -> str:
+    sequence = value.strip()
+    if not PREFLIGHT_SEQUENCE_PATTERN.fullmatch(sequence):
+        raise ValueError(
+            "invalid preflight sequence; expected a single lowercase directory name "
+            "with a numeric prefix, for example: 001-kubernetes-users"
+        )
+    return sequence
 
 
 def resolve_source_run(source_run: str) -> Path:
@@ -135,6 +146,7 @@ def build_destinations(
     project_slug: str,
     mode: str,
     project_id: str,
+    preflight_sequence: str | None,
 ) -> list[tuple[str, Path]]:
     destinations: list[tuple[str, Path]] = []
     if mode in {"radar-native", "both"}:
@@ -145,6 +157,8 @@ def build_destinations(
             )
         )
     if mode in {"p2a-preflight", "both"}:
+        if preflight_sequence is None:
+            raise ValueError("preflight sequence is required for P2A handoff")
         destinations.append(
             (
                 "p2a-preflight",
@@ -152,7 +166,8 @@ def build_destinations(
                 / ".plan2agent"
                 / "artifacts"
                 / project_id
-                / "preflight-research",
+                / "preflight-research"
+                / preflight_sequence,
             )
         )
     return destinations
@@ -310,6 +325,7 @@ def manifest_text(
     target_project: Path,
     mode: str,
     p2a_project_id: str,
+    preflight_sequence: str | None,
     overwrite_policy: str,
     copied_files: list[str],
     missing_required_files: list[str],
@@ -340,6 +356,7 @@ run_mode: {run_mode}
 profile: {profile}
 handoff_mode: {mode}
 p2a_project_id: {p2a_project_id}
+preflight_sequence: {preflight_sequence or "none"}
 created_at: {now}
 overwrite_policy: {overwrite_policy}
 source_complete: {str(source_complete).lower()}
@@ -387,6 +404,13 @@ def main(argv: list[str]) -> int:
         help="P2A project id. Defaults to target directory name in kebab-case.",
     )
     parser.add_argument(
+        "--sequence",
+        help=(
+            "P2A preflight sequence directory. Required for p2a-preflight and both; "
+            "use a numeric prefix such as 001-kubernetes-users."
+        ),
+    )
+    parser.add_argument(
         "--overwrite",
         action="store_true",
         help="Allow replacing existing destination files.",
@@ -419,6 +443,26 @@ def main(argv: list[str]) -> int:
         )
         return 2
 
+    preflight_sequence: str | None = None
+    if args.mode in {"p2a-preflight", "both"}:
+        if not args.sequence:
+            print(
+                "error: --sequence is required when --mode is p2a-preflight or both",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            preflight_sequence = validate_preflight_sequence(args.sequence)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+    elif args.sequence:
+        print(
+            "error: --sequence is only valid when --mode is p2a-preflight or both",
+            file=sys.stderr,
+        )
+        return 2
+
     try:
         source_run = resolve_source_run(args.source_run)
     except FileNotFoundError as exc:
@@ -428,12 +472,17 @@ def main(argv: list[str]) -> int:
     project_slug = source_run.name
     target_project = Path(args.target_project).expanduser().resolve()
     project_id = args.project_id or slugify(target_project.name)
-    destinations = build_destinations(
-        target_project=target_project,
-        project_slug=project_slug,
-        mode=args.mode,
-        project_id=project_id,
-    )
+    try:
+        destinations = build_destinations(
+            target_project=target_project,
+            project_slug=project_slug,
+            mode=args.mode,
+            project_id=project_id,
+            preflight_sequence=preflight_sequence,
+        )
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     try:
         run_type, run_type_source = infer_run_type(source_run, args.run_type)
         profile, profile_source = infer_profile(source_run, run_type)
@@ -621,6 +670,12 @@ def main(argv: list[str]) -> int:
             )
 
     for mode, destination in destinations:
+        destination_caveats = list(caveats)
+        if mode == "p2a-preflight":
+            destination_caveats.append(
+                "P2A preflight research was exported into selected sequence "
+                f"{preflight_sequence}."
+            )
         print(f"{mode}: {destination}")
         print(f"  run type: {run_type} ({run_type_source})")
         print(f"  profile: {profile} ({profile_source})")
@@ -653,12 +708,15 @@ def main(argv: list[str]) -> int:
             run_mode=run_type,
             profile=profile,
             p2a_project_id=project_id,
+            preflight_sequence=(
+                preflight_sequence if mode == "p2a-preflight" else None
+            ),
             overwrite_policy=overwrite_policy,
             source_complete=source_complete,
             copied_files=transferred_files,
             missing_required_files=missing_required,
             missing_optional_files=missing_optional,
-            caveats=caveats,
+            caveats=destination_caveats,
         )
         (destination / MANIFEST_FILE).write_text(manifest, encoding="utf-8")
         print(f"  wrote {destination / MANIFEST_FILE}")

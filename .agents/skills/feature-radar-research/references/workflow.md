@@ -214,6 +214,8 @@ Use Markdown first. JSON schemas can come later.
 
 Handoff creates `handoff-manifest.md` in each destination, not in the source run by default.
 
+For P2A handoff, package each investigation under `.plan2agent/artifacts/<project-id>/preflight-research/<sequence>/`, using a sequence such as `001-kubernetes-users`. A `p2a-preflight` handoff does not create `.feature-radar/` in the target project.
+
 All three existing-project files are required by the current run contract. If a section is not applicable, keep its file and record `N/A` with a reason.
 
 `<project-slug>` should be a readable English project name in lowercase ASCII with hyphens, for example `on-device-character-chat-app`. Do not use a timestamp as the primary directory name unless creating a second snapshot for the same project.

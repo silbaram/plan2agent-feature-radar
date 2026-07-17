@@ -39,7 +39,7 @@ Resolved: action=<research|handoff>, research_mode=<idea|existing-project>, prof
 
 Do not ask merely because a field was omitted. Ask one concise question only when the research subject cannot be identified, multiple projects or runs are plausible, research versus handoff materially changes the requested artifacts, a handoff source or target cannot be resolved, or overwrite approval is required.
 
-For handoff, require a source run and target path and default `handoff_mode` to `radar-native`. Derive a readable English run slug when omitted.
+For handoff, require a source run and target path and default `handoff_mode` to `radar-native`. For `p2a-preflight` or `both`, also require `preflight_sequence` in numeric-prefix kebab form such as `001-kubernetes-users`. Derive a readable English run slug when omitted.
 
 ## Procedure
 
@@ -66,7 +66,7 @@ Read `references/workflow.md` before acting. If the user requests `profile: tool
 
 If the user provides a local project path, inspect it read-only. Skip secrets, credentials, dependency directories, build outputs, generated artifacts, and large binary files unless explicitly requested. Compare the current implementation with external signals and recommend next enhancement candidates. Do not modify code unless explicitly requested.
 
-If the user asks to hand off or export a completed run, read `references/handoff.md`. Identify the source run, target project path, and handoff mode: `radar-native`, `p2a-preflight`, or `both`. Copy only agreed Feature Radar artifacts, regenerate `_INDEX.md` from authoritative metadata in each destination, and create `handoff-manifest.md` with `source_complete` plus separate missing-required and missing-optional sections. The sole optional file is `p2a-context.json`. Do not overwrite existing files unless explicitly requested.
+If the user asks to hand off or export a completed run, read `references/handoff.md`. Identify the source run, target project path, and handoff mode: `radar-native`, `p2a-preflight`, or `both`. For `p2a-preflight` or `both`, require a safe sequence such as `001-kubernetes-users` and export to `preflight-research/<sequence>/`. A P2A-only handoff must not create a target `.feature-radar/` copy. Copy only agreed Feature Radar artifacts, regenerate `_INDEX.md` from authoritative metadata in each destination, and create `handoff-manifest.md` with `source_complete`, `preflight_sequence`, and separate missing-required and missing-optional sections. The sole optional file is `p2a-context.json`. Do not overwrite existing files unless explicitly requested; different sequences coexist without overwrite.
 
 ## Output Contract
 

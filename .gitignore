@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .feature-radar/
+.plan2agent/
 __pycache__/
 *.py[cod]
 .DS_Store

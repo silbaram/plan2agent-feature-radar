@@ -38,7 +38,7 @@ Resolved: action=<research|handoff>, research_mode=<idea|existing-project>, prof
 
 Do not ask merely because a field was omitted. Ask one concise question only when the research subject cannot be identified, multiple projects or runs are plausible, research versus handoff materially changes the requested artifacts, a handoff source or target cannot be resolved, or overwrite approval is required.
 
-For handoff, require a source run and target path and default `handoff_mode` to `radar-native`. Derive a readable English run slug when omitted.
+For handoff, require a source run and target path and default `handoff_mode` to `radar-native`. For `p2a-preflight` or `both`, also require `preflight_sequence` in numeric-prefix kebab form such as `001-kubernetes-users`. Derive a readable English run slug when omitted.
 
 ## Workflow
 
@@ -84,9 +84,10 @@ If the user asks to hand off or export a completed run:
 1. Identify the source run path or project slug.
 2. Identify the target project path.
 3. Select the handoff mode: `radar-native`, `p2a-preflight`, or `both`. Default to `radar-native` when the user does not specify.
-4. Copy only Feature Radar artifacts into the agreed destination directories.
-5. Regenerate `_INDEX.md` from authoritative research artifact metadata in each destination and create `handoff-manifest.md`. Record `source_complete`; for intentional incomplete export, separate missing required files from the sole optional file, `p2a-context.json`.
-6. Do not overwrite existing files unless the user explicitly requests overwrite or replace.
+4. For `p2a-preflight` or `both`, require a safe preflight sequence such as `001-kubernetes-users` and export to `preflight-research/<sequence>/`.
+5. Copy only Feature Radar artifacts into the agreed destination directories. A P2A-only handoff must not create a target `.feature-radar/` copy.
+6. Regenerate `_INDEX.md` from authoritative research artifact metadata in each destination and create `handoff-manifest.md`. Record `source_complete` and `preflight_sequence`; for intentional incomplete export, separate missing required files from the sole optional file, `p2a-context.json`.
+7. Do not overwrite existing files unless the user explicitly requests overwrite or replace. Different sequences coexist and do not require overwrite.
 
 ## Output
 
@@ -136,4 +137,5 @@ If the user only asks for a plan, do not create files. Return the plan in chat.
 - Reference local evidence with file paths and line numbers when possible.
 - During handoff, preserve artifact content and copy only agreed Feature Radar outputs.
 - During handoff, write to `.plan2agent` only when the user asks for `p2a-preflight` or `both`.
+- During P2A handoff, use `.plan2agent/artifacts/<project-id>/preflight-research/<sequence>/`; do not flatten multiple investigations into one directory.
 - During handoff, ask before overwriting existing destination files.
